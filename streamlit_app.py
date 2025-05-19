@@ -6,14 +6,16 @@ import os
 
 st.set_page_config(page_title="Fairfax Real Estate Dashboard", layout="wide")
 
-# --- DATABASE SETUP ---
+# --- CHECK FOR DATABASE BEFORE CACHING ---
 db_path = "fairfax_real_estate_sales_small.db"
 if not os.path.exists(db_path):
     st.error("❌ Database file not found. Please upload 'fairfax_real_estate_sales_small.db' to the repo.")
     st.stop()
 
+# --- CONNECTION ---
 conn = sqlite3.connect(db_path)
 
+# --- LOAD DATA ---
 @st.cache_data
 def load_data():
     df = pd.read_sql_query("SELECT * FROM sales", conn)
@@ -22,6 +24,7 @@ def load_data():
     return df
 
 df = load_data()
+
 
 # --- SIDEBAR FILTERS ---
 st.sidebar.title("Filters")
