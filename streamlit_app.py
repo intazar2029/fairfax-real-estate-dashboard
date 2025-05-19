@@ -23,7 +23,6 @@ def load_data():
     return df
 
 df = load_data()
-
 if df.empty:
     st.warning("⚠️ No sales data loaded. Please check your database file.")
     st.stop()
@@ -32,12 +31,7 @@ if df.empty:
 st.sidebar.title("Filters")
 
 validity_options = sorted(df['sale_validity'].dropna().unique().tolist())
-if len(validity_options) > 0:
-    default_validity = ['VALID'] if 'VALID' in validity_options else [validity_options[0]]
-else:
-    validity_options = ['Unknown']
-    default_validity = ['Unknown']
-
+default_validity = ['VALID'] if 'VALID' in validity_options else [validity_options[0]]
 validity_filter = st.sidebar.multiselect("Sale Validity", options=validity_options, default=default_validity)
 
 min_date = df['sale_date'].min().date()
@@ -56,9 +50,9 @@ filtered_df = df[
     (df['sale_validity'].isin(validity_filter))
 ]
 
-# --- DASHBOARD CONTENT ---
 st.title("📊 Fairfax County Real Estate Sales Dashboard")
 
+# --- KPI METRICS ---
 col1, col2, col3 = st.columns(3)
 col1.metric("🧾 Total Sales", f"{len(filtered_df):,}")
 col2.metric("💰 Total Volume", f"${filtered_df['price'].sum():,.0f}")
@@ -66,7 +60,7 @@ col3.metric("🏠 Avg. Sale Price", f"${filtered_df['price'].mean():,.0f}")
 
 st.markdown("---")
 
-# --- MONTHLY TRENDS ---
+# --- LINE CHART: Monthly Average Price ---
 monthly_avg = (
     filtered_df
     .groupby(filtered_df['sale_date'].dt.to_period("M"))['price']
@@ -83,8 +77,56 @@ chart = alt.Chart(monthly_avg).mark_line(point=True).encode(
 ).properties(width=800, height=400)
 st.altair_chart(chart)
 
-# --- TABLE ---
-st.subheader("📋 Filtered Sales")
+# --- HEATMAP ---
+st.subheader("📊 Heatmap: Avg. Sale Price by Year & Month")
+heatmap_df = (
+    filtered_df.copy()
+    .assign(year=filtered_df['sale_date'].dt.year, month=filtered_df['sale_date'].dt.month)
+    .groupby(['year', 'month'])['price']
+    .mean()
+    .reset_index()
+)
+
+heatmap = alt.Chart(heatmap_df).mark_rect().encode(
+    x=alt.X('month:O', title='Month'),
+    y=alt.Y('year:O', title='Year'),
+    color=alt.Color('price:Q', scale=alt.Scale(scheme='viridis')),
+    tooltip=['year', 'month', 'price']
+).properties(width=500, height=400)
+st.altair_chart(heatmap)
+
+# --- FREQUENTLY SOLD PROPERTIES ---
+st.subheader("🔁 Most Frequently Sold Properties")
+top_props = filtered_df['property_id'].value_counts().head(10).reset_index()
+top_props.columns = ['property_id', 'sales_count']
+st.dataframe(top_props)
+
+# --- HISTOGRAM ---
+st.subheader("💸 Sale Price Distribution (< $1.5M)")
+hist_df = filtered_df[filtered_df['price'] < 1_500_000]
+hist_chart = alt.Chart(hist_df).mark_bar().encode(
+    alt.X("price:Q", bin=alt.Bin(maxbins=30), title="Price Range"),
+    y='count()',
+    tooltip=['count()']
+).properties(width=800, height=400)
+st.altair_chart(hist_chart)
+
+# --- YOY CHANGE ---
+st.subheader("📈 Year-over-Year % Change in Avg. Price")
+yoy = (
+    filtered_df
+    .groupby(filtered_df['sale_date'].dt.year)['price']
+    .mean()
+    .pct_change()
+    .multiply(100)
+    .round(2)
+    .reset_index(name="YoY_Change")
+)
+yoy.columns = ['year', 'YoY_Change']
+st.line_chart(yoy.set_index('year'))
+
+# --- SALES TABLE ---
+st.subheader("📋 Filtered Sales Table")
 st.dataframe(
     filtered_df[['sale_date', 'property_id', 'price', 'tax_year', 'sale_validity']]
     .sort_values(by='sale_date', ascending=False)
